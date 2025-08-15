@@ -24,7 +24,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -79,11 +78,9 @@ func NewController(mgr manager.Manager, meshWatcher mesh.Watcher, injectionConfi
 		currentRevision: time.Now().Unix(),
 	}
 
-	// TODO: Set up controller with manager and watchers
-	// For now, skip controller setup to get basic compilation working
-	log.Info("Controller setup skipped for initial implementation")
-	
-	_ = controller.New // Silence unused import
+	// For now, we'll use manual triggering via mesh config changes
+	// In production, we'd set up proper controller watches
+	log.Info("Policy injection controller initialized")
 
 	// Watch mesh configuration changes
 	meshWatcher.AddMeshHandler(func() {
@@ -95,6 +92,15 @@ func NewController(mgr manager.Manager, meshWatcher mesh.Watcher, injectionConfi
 			},
 		})
 	})
+	
+	// Trigger initial reconciliation
+	log.Info("Triggering initial policy reconciliation")
+	c.queue.Add(reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Namespace: c.namespace,
+			Name:      "initial-reconcile",
+		},
+	})
 
 	return c, nil
 }
@@ -102,6 +108,7 @@ func NewController(mgr manager.Manager, meshWatcher mesh.Watcher, injectionConfi
 // Reconcile handles reconciliation of MutatingAdmissionPolicy resources
 func (c *Controller) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
 	log.Infof("Reconciling MutatingAdmissionPolicy for %s/%s", req.Namespace, req.Name)
+	log.Info("DEBUG: Starting reconciliation - generating revision")
 
 	// Generate new revision number
 	newRevision := time.Now().Unix()
@@ -112,34 +119,44 @@ func (c *Controller) Reconcile(ctx context.Context, req reconcile.Request) (reco
 	c.configMapName = fmt.Sprintf("%s-%d", ConfigMapNamePrefix, c.currentRevision)
 
 	// Step 1: Generate injection configuration ConfigMap
+	log.Info("DEBUG: Step 1 - Generating injection ConfigMap")
 	configMap, err := c.generateInjectionConfigMap()
 	if err != nil {
 		log.Errorf("Failed to generate injection ConfigMap: %v", err)
 		return reconcile.Result{}, err
 	}
+	log.Info("DEBUG: Step 1 completed successfully")
 
 	// Step 2: Create or update ConfigMap
+	log.Info("DEBUG: Step 2 - Creating/updating ConfigMap")
 	err = c.createOrUpdateConfigMap(ctx, configMap)
 	if err != nil {
 		log.Errorf("Failed to create/update ConfigMap: %v", err)
 		return reconcile.Result{}, err
 	}
+	log.Info("DEBUG: Step 2 completed successfully")
 
 	// Step 3: Generate MutatingAdmissionPolicy resources
+	log.Info("DEBUG: Step 3 - Generating MutatingAdmissionPolicy resources")
 	policies, err := c.generatePolicies()
 	if err != nil {
 		log.Errorf("Failed to generate policies: %v", err)
 		return reconcile.Result{}, err
 	}
+	log.Infof("DEBUG: Step 3 completed successfully, generated %d policies", len(policies))
 
 	// Step 4: Create or update policies
-	for _, policy := range policies {
+	log.Info("DEBUG: Step 4 - Creating/updating policies")
+	for i, policy := range policies {
+		log.Infof("DEBUG: Creating/updating policy %d/%d: %s", i+1, len(policies), policy.Name)
 		err = c.createOrUpdatePolicy(ctx, policy)
 		if err != nil {
 			log.Errorf("Failed to create/update policy %s: %v", policy.Name, err)
 			return reconcile.Result{}, err
 		}
+		log.Infof("DEBUG: Successfully created/updated policy: %s", policy.Name)
 	}
+	log.Info("DEBUG: Step 4 completed successfully")
 
 	// Step 5: Create or update policy bindings
 	bindings, err := c.generatePolicyBindings()
@@ -201,8 +218,11 @@ func (c *Controller) createOrUpdateConfigMap(ctx context.Context, configMap *cor
 
 // createOrUpdatePolicy creates or updates a MutatingAdmissionPolicy
 func (c *Controller) createOrUpdatePolicy(ctx context.Context, policy *admissionregistrationv1alpha1.MutatingAdmissionPolicy) error {
+	log.Infof("DEBUG: createOrUpdatePolicy called for policy: %s", policy.Name)
 	existing := &admissionregistrationv1alpha1.MutatingAdmissionPolicy{}
+	log.Info("DEBUG: About to call c.Get() for existing policy")
 	err := c.Get(ctx, types.NamespacedName{Name: policy.Name}, existing)
+	log.Infof("DEBUG: c.Get() completed with error: %v", err)
 
 	if err != nil {
 		if client.IgnoreNotFound(err) != nil {
@@ -210,14 +230,20 @@ func (c *Controller) createOrUpdatePolicy(ctx context.Context, policy *admission
 		}
 		// Policy doesn't exist, create it
 		log.Infof("Creating MutatingAdmissionPolicy %s", policy.Name)
-		return c.Create(ctx, policy)
+		log.Info("DEBUG: About to call c.Create()")
+		err := c.Create(ctx, policy)
+		log.Infof("DEBUG: c.Create() completed with error: %v", err)
+		return err
 	}
 
 	// Policy exists, update it
 	log.Infof("Updating MutatingAdmissionPolicy %s", policy.Name)
+	log.Info("DEBUG: About to call c.Update()")
 	existing.Spec = policy.Spec
 	existing.Labels = policy.Labels
-	return c.Update(ctx, existing)
+	err = c.Update(ctx, existing)
+	log.Infof("DEBUG: c.Update() completed with error: %v", err)
+	return err
 }
 
 // createOrUpdatePolicyBinding creates or updates a MutatingAdmissionPolicyBinding

@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	"istio.io/istio/pkg/env"
 	"istio.io/istio/pkg/kube/inject"
@@ -46,6 +47,10 @@ var (
 
 // initPolicyInjector initializes the MutatingAdmissionPolicy-based sidecar injector
 func (s *Server) initPolicyInjector(args *PilotArgs) (*policy.PolicyManager, error) {
+	log.Info("DEBUG: initPolicyInjector called")
+	log.Infof("DEBUG: POLICY_INJECTION_ENABLED=%v", policyInjectionEnabled.Get())
+	log.Infof("DEBUG: POLICY_INJECTION_FORCE=%v", policyInjectionForce.Get())
+	
 	if !policyInjectionEnabled.Get() {
 		log.Info("MutatingAdmissionPolicy-based injection is disabled")
 		return nil, nil
@@ -231,14 +236,18 @@ func (s *Server) createControllerManager(args *PilotArgs) (manager.Manager, erro
 	options := manager.Options{
 		Scheme: scheme,
 		Cache: cache.Options{
-			// Watch only the istio namespace by default
-			DefaultNamespaces: map[string]cache.Config{
-				args.Namespace: {},
-			},
+			// Watch all namespaces to include cluster-scoped resources
+			// This is needed for MutatingAdmissionPolicy which is cluster-scoped
 		},
 		// We don't need leader election for the policy controller as each revision
 		// manages its own policies
 		LeaderElection: false,
+		// Disable metrics server to avoid port conflict with istiod's :8080
+		Metrics: server.Options{
+			BindAddress: "0", // Disable metrics server
+		},
+		// Disable health probe server as well
+		HealthProbeBindAddress: "0",
 	}
 
 	// Create the manager

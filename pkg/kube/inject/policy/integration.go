@@ -18,7 +18,9 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"istio.io/istio/pkg/config/mesh"
 	"istio.io/istio/pkg/kube/inject"
@@ -57,11 +59,37 @@ func (pm *PolicyManager) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// Start the controller
-	err := pm.controller.Start(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to start policy controller: %w", err)
-	}
+	// Start the controller manager first
+	log.Info("Starting controller manager")
+	go func() {
+		if err := pm.controller.mgr.Start(ctx); err != nil {
+			log.Errorf("Failed to start controller manager: %v", err)
+		}
+	}()
+	
+	// Wait for cache to sync, then trigger reconciliation
+	go func() {
+		log.Info("Waiting for cache sync before reconciliation")
+		if synced := pm.controller.mgr.GetCache().WaitForCacheSync(ctx); !synced {
+			log.Error("Failed to sync cache")
+			return
+		}
+		log.Info("Cache synced, triggering policy reconciliation")
+		
+		req := reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: pm.controller.namespace,
+				Name:      "manual-reconcile",
+			},
+		}
+		
+		result, err := pm.controller.Reconcile(ctx, req)
+		if err != nil {
+			log.Errorf("Manual reconciliation failed: %v", err)
+		} else {
+			log.Infof("Manual reconciliation succeeded: %+v", result)
+		}
+	}()
 
 	log.Info("MutatingAdmissionPolicy-based sidecar injection system started successfully")
 	return nil
