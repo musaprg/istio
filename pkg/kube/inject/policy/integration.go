@@ -18,9 +18,7 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"istio.io/istio/pkg/config/mesh"
 	"istio.io/istio/pkg/kube/inject"
@@ -76,18 +74,11 @@ func (pm *PolicyManager) Start(ctx context.Context) error {
 		}
 		log.Info("Cache synced, triggering policy reconciliation")
 		
-		req := reconcile.Request{
-			NamespacedName: types.NamespacedName{
-				Namespace: pm.controller.namespace,
-				Name:      "manual-reconcile",
-			},
-		}
-		
-		result, err := pm.controller.Reconcile(ctx, req)
+		err := pm.controller.ReconcileUnstructured(ctx)
 		if err != nil {
 			log.Errorf("Manual reconciliation failed: %v", err)
 		} else {
-			log.Infof("Manual reconciliation succeeded: %+v", result)
+			log.Info("Manual reconciliation succeeded")
 		}
 	}()
 

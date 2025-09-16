@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 
-	admissionregistrationv1alpha1 "k8s.io/api/admissionregistration/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -268,10 +267,8 @@ func createControllerScheme() (*runtime.Scheme, error) {
 		return nil, err
 	}
 	
-	// Add admission registration types (for MutatingAdmissionPolicy)
-	if err := admissionregistrationv1alpha1.AddToScheme(scheme); err != nil {
-		return nil, err
-	}
+	// Note: We don't need to add MutatingAdmissionPolicy types to scheme since we use unstructured API
+	// The unstructured client can work with any API resource without explicit scheme registration
 	
 	return scheme, nil
 }
