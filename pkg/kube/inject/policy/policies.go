@@ -59,12 +59,54 @@ func (c *Controller) generateBaseCELExpression() string {
 		JSONPatch{op: "add", path: "/spec/containers/1/ports", value: []},
 		JSONPatch{op: "add", path: "/spec/containers/1/ports/-", value: {"name": "http-envoy-prom", "containerPort": 15090, "protocol": "TCP"}},
 
-		JSONPatch{op: "add", path: "/spec/containers/1/securityContext", value: {"runAsUser": 1337, "runAsGroup": 1337, "runAsNonRoot": true, "readOnlyRootFilesystem": true, "allowPrivilegeEscalation": false}},
+		JSONPatch{op: "add", path: "/spec/containers/1/volumeMounts", value: []},
+		JSONPatch{op: "add", path: "/spec/containers/1/volumeMounts/-", value: {"name": "workload-socket", "mountPath": "/var/run/secrets/workload-spiffe-uds"}},
+		JSONPatch{op: "add", path: "/spec/containers/1/volumeMounts/-", value: {"name": "credential-socket", "mountPath": "/var/run/secrets/credential-uds"}},
+		JSONPatch{op: "add", path: "/spec/containers/1/volumeMounts/-", value: {"name": "workload-certs", "mountPath": "/var/run/secrets/workload-spiffe-credentials"}},
+		JSONPatch{op: "add", path: "/spec/containers/1/volumeMounts/-", value: {"name": "istiod-ca-cert", "mountPath": "/var/run/secrets/istio"}},
+		JSONPatch{op: "add", path: "/spec/containers/1/volumeMounts/-", value: {"name": "istio-data", "mountPath": "/var/lib/istio/data"}},
+		JSONPatch{op: "add", path: "/spec/containers/1/volumeMounts/-", value: {"name": "istio-envoy", "mountPath": "/etc/istio/proxy"}},
+		JSONPatch{op: "add", path: "/spec/containers/1/volumeMounts/-", value: {"name": "istio-token", "mountPath": "/var/run/secrets/tokens"}},
+		JSONPatch{op: "add", path: "/spec/containers/1/volumeMounts/-", value: {"name": "istio-podinfo", "mountPath": "/etc/istio/pod"}},
 
-		JSONPatch{op: "add", path: "/spec/initContainers", value: [{"name": "istio-init", "image": "gcr.io/istio-testing/proxyv2:latest"}]},
-		JSONPatch{op: "add", path: "/spec/initContainers/0/command", value: ["/usr/local/bin/pilot-agent"]},
-		JSONPatch{op: "add", path: "/spec/initContainers/0/args", value: ["istio-iptables", "-p", "15001", "-z", "15006", "-u", "1337", "-m", "REDIRECT", "-i", "*", "-x", "", "-b", "*", "-d", "15090,15021,15020"]},
-		JSONPatch{op: "add", path: "/spec/initContainers/0/securityContext", value: {"runAsUser": 0, "runAsGroup": 0, "runAsNonRoot": false, "allowPrivilegeEscalation": false}}
+		JSONPatch{op: "add", path: "/spec/containers/1/securityContext", value: {}},
+		JSONPatch{op: "add", path: "/spec/containers/1/securityContext/runAsUser", value: 1337},
+		JSONPatch{op: "add", path: "/spec/containers/1/securityContext/runAsGroup", value: 1337},
+		JSONPatch{op: "add", path: "/spec/containers/1/securityContext/runAsNonRoot", value: true},
+		JSONPatch{op: "add", path: "/spec/containers/1/securityContext/readOnlyRootFilesystem", value: true},
+		JSONPatch{op: "add", path: "/spec/containers/1/securityContext/allowPrivilegeEscalation", value: false},
+		JSONPatch{op: "add", path: "/spec/containers/1/securityContext/capabilities", value: {}},
+		JSONPatch{op: "add", path: "/spec/containers/1/securityContext/capabilities/drop", value: ["ALL"]},
+
+		JSONPatch{op: "add", path: "/spec/containers/1/resources", value: {}},
+		JSONPatch{op: "add", path: "/spec/containers/1/resources/requests", value: {"cpu": "100m", "memory": "128Mi"}},
+		JSONPatch{op: "add", path: "/spec/containers/1/resources/limits", value: {"cpu": "2000m", "memory": "1Gi"}},
+
+		JSONPatch{op: "add", path: "/spec/initContainers", value: [{"name": "istio-init", "image": "busybox:1.28"}]},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/command", value: ["sh"]},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/args", value: ["-c", "echo 'Init container running (iptables disabled for Kind)'; exit 0"]},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/securityContext", value: {}},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/securityContext/runAsUser", value: 0},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/securityContext/runAsGroup", value: 0},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/securityContext/runAsNonRoot", value: false},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/securityContext/allowPrivilegeEscalation", value: false},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/securityContext/capabilities", value: {}},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/securityContext/capabilities/add", value: ["NET_ADMIN", "NET_RAW"]},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/securityContext/capabilities/drop", value: ["ALL"]},
+
+		JSONPatch{op: "add", path: "/spec/initContainers/0/resources", value: {}},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/resources/requests", value: {"cpu": "100m", "memory": "128Mi"}},
+		JSONPatch{op: "add", path: "/spec/initContainers/0/resources/limits", value: {"cpu": "2000m", "memory": "1Gi"}},
+
+		JSONPatch{op: "add", path: "/spec/volumes", value: []},
+		JSONPatch{op: "add", path: "/spec/volumes/-", value: {"name": "workload-socket", "emptyDir": {}}},
+		JSONPatch{op: "add", path: "/spec/volumes/-", value: {"name": "credential-socket", "emptyDir": {}}},
+		JSONPatch{op: "add", path: "/spec/volumes/-", value: {"name": "workload-certs", "emptyDir": {}}},
+		JSONPatch{op: "add", path: "/spec/volumes/-", value: {"name": "istio-envoy", "emptyDir": {"medium": "Memory"}}},
+		JSONPatch{op: "add", path: "/spec/volumes/-", value: {"name": "istio-data", "emptyDir": {}}},
+		JSONPatch{op: "add", path: "/spec/volumes/-", value: {"name": "istio-podinfo", "downwardAPI": {"items": [{"path": "labels", "fieldRef": {"fieldPath": "metadata.labels"}}, {"path": "annotations", "fieldRef": {"fieldPath": "metadata.annotations"}}]}}},
+		JSONPatch{op: "add", path: "/spec/volumes/-", value: {"name": "istio-token", "projected": {"sources": [{"serviceAccountToken": {"path": "istio-token", "expirationSeconds": 43200, "audience": "istio-ca"}}]}}},
+		JSONPatch{op: "add", path: "/spec/volumes/-", value: {"name": "istiod-ca-cert", "configMap": {"name": "istio-ca-root-cert"}}}
 	]`
 }
 

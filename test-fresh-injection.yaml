@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-fresh-injection
+  namespace: test-policy
+  labels:
+    app: fresh-test
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
