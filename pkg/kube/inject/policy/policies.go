@@ -32,11 +32,13 @@ func (c *Controller) generateBaseSidecarPolicy() interface{} {
 
 // generateBaseCELExpression creates the CEL expression for base sidecar injection using ApplyConfiguration
 func (c *Controller) generateBaseCELExpression() string {
-	log.Info("DEBUG: generateBaseCELExpression called - using Object construction for MutatingAdmissionPolicy")
+	log.Info("DEBUG: generateBaseCELExpression called - using full Object construction for MutatingAdmissionPolicy")
 	// ApplyConfiguration expects a CEL expression that returns an Object
-	// We need to construct an Object with the metadata we want to apply
-	return `Object.metadata{
-		labels: {"istio-policy-test": "applied", "istio-cel-working": "true"}
+	// We need to construct a complete Object with the metadata we want to apply
+	return `Object{
+		metadata: Object.metadata{
+			labels: {"istio-policy-test": "applied", "istio-cel-working": "true"}
+		}
 	}`
 }
 
