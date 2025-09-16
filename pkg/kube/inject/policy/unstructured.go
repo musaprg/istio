@@ -37,8 +37,6 @@ func (c *Controller) generatePoliciesUnstructured() ([]*unstructured.Unstructure
 func (c *Controller) generateBaseSidecarPolicyUnstructured() *unstructured.Unstructured {
 	policyName := fmt.Sprintf("%s-base", PolicyNamePrefix)
 
-	celExpression := c.generateBaseCELExpression()
-
 	policy := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "admissionregistration.k8s.io/v1beta1",
@@ -53,10 +51,7 @@ func (c *Controller) generateBaseSidecarPolicyUnstructured() *unstructured.Unstr
 				},
 			},
 			"spec": map[string]interface{}{
-				"paramKind": map[string]interface{}{
-					"apiVersion": "v1",
-					"kind":       "ConfigMap",
-				},
+				"failurePolicy": "Fail",
 				"matchConstraints": map[string]interface{}{
 					"resourceRules": []interface{}{
 						map[string]interface{}{
@@ -66,28 +61,33 @@ func (c *Controller) generateBaseSidecarPolicyUnstructured() *unstructured.Unstr
 							"resources":   []interface{}{"pods"},
 						},
 					},
-					"objectSelector": map[string]interface{}{
-						"matchExpressions": []interface{}{
-							map[string]interface{}{
-								"key":      "sidecar.istio.io/inject",
-								"operator": "NotIn",
-								"values":   []interface{}{"false"},
-							},
-						},
-					},
-					"namespaceSelector": map[string]interface{}{
-						"matchLabels": map[string]interface{}{
-							"injection-method": "policy",
-							"istio-injection":  "enabled",
-						},
+				},
+				"variables": []interface{}{
+					map[string]interface{}{
+						"name": "inject",
+						"expression": `(
+  (has(object.metadata.labels) &&
+   has(object.metadata.labels["sidecar.istio.io/inject"]) &&
+   object.metadata.labels["sidecar.istio.io/inject"] == "true") ||
+  (has(object.metadata.namespace) &&
+   has(namespaceObject.metadata.labels) &&
+   has(namespaceObject.metadata.labels["istio-injection"]) &&
+   namespaceObject.metadata.labels["istio-injection"] == "enabled" &&
+   (!has(object.metadata.labels) ||
+    !has(object.metadata.labels["sidecar.istio.io/inject"]) ||
+    object.metadata.labels["sidecar.istio.io/inject"] != "false"))
+)`,
 					},
 				},
 				"reinvocationPolicy": "Never",
 				"mutations": []interface{}{
 					map[string]interface{}{
 						"patchType": "JSONPatch",
-						"jsonPatch": map[string]interface{}{
-							"expression": celExpression,
+						"jsonPatches": []interface{}{
+							map[string]interface{}{
+								"expression": c.generateJSONPatchExpression(),
+								"condition":  "variables.inject",
+							},
 						},
 					},
 				},
@@ -96,6 +96,10 @@ func (c *Controller) generateBaseSidecarPolicyUnstructured() *unstructured.Unstr
 	}
 
 	return policy
+}
+
+func (c *Controller) generateJSONPatchExpression() string {
+	return c.generateBaseCELExpression()
 }
 
 // generatePolicyBindingsUnstructured creates the MutatingAdmissionPolicyBinding resources using unstructured API
