@@ -131,6 +131,7 @@ func (c *Controller) generateBaseSidecarPolicyBindingUnstructured() *unstructure
 				"paramRef": map[string]interface{}{
 					"name":      c.configMapName,
 					"namespace": c.namespace,
+					"parameterNotFoundAction": "Allow",
 				},
 				"matchResources": map[string]interface{}{
 					"resourceRules": []interface{}{
