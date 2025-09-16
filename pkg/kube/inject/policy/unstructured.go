@@ -85,8 +85,8 @@ func (c *Controller) generateBaseSidecarPolicyUnstructured() *unstructured.Unstr
 				"reinvocationPolicy": "Never",
 				"mutations": []interface{}{
 					map[string]interface{}{
-						"patchType": "ApplyConfiguration",
-						"applyConfiguration": map[string]interface{}{
+						"patchType": "JSONPatch",
+						"jsonPatch": map[string]interface{}{
 							"expression": celExpression,
 						},
 					},

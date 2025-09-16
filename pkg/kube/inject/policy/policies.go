@@ -30,51 +30,65 @@ func (c *Controller) generateBaseSidecarPolicy() interface{} {
 	return nil
 }
 
-// generateBaseCELExpression creates the CEL expression for base sidecar injection using ApplyConfiguration
+// generateBaseCELExpression creates the CEL expression for base sidecar injection using JSONPatch
 func (c *Controller) generateBaseCELExpression() string {
-	log.Info("DEBUG: generateBaseCELExpression called - implementing full sidecar injection with proper CEL syntax")
-	// ApplyConfiguration expects a CEL expression that returns an Object
-	// Now that basic mutation works, expand to full sidecar injection
-	return `Object{
-		metadata: Object.metadata{
-			labels: {"sidecar.istio.io/inject": "true", "istio.io/rev": "default"},
-			annotations: {
-				"sidecar.istio.io/interceptionMode": "REDIRECT",
-				"traffic.sidecar.istio.io/includeInboundPorts": "*",
-				"traffic.sidecar.istio.io/excludeInboundPorts": "15090,15021,15020"
-			}
-		},
-		spec: Object.spec{
-			containers: [
-				Object.spec.containers{
-					name: "istio-proxy",
-					image: "gcr.io/istio-testing/proxyv2:latest",
-					args: [
-						"proxy", "sidecar", "--domain", "$(POD_NAMESPACE).svc.cluster.local",
-						"--proxyLogLevel=warning", "--proxyComponentLogLevel=misc:error", "--log_output_level=default:info"
-					],
-					env: [
-						Object.spec.containers.env{name: "POD_NAME", valueFrom: Object.spec.containers.env.valueFrom{fieldRef: Object.spec.containers.env.valueFrom.fieldRef{fieldPath: "metadata.name"}}},
-						Object.spec.containers.env{name: "POD_NAMESPACE", valueFrom: Object.spec.containers.env.valueFrom{fieldRef: Object.spec.containers.env.valueFrom.fieldRef{fieldPath: "metadata.namespace"}}},
-						Object.spec.containers.env{name: "PILOT_CERT_PROVIDER", value: "istiod"},
-						Object.spec.containers.env{name: "CA_ADDR", value: "istiod.istio-system.svc:15012"}
-					],
-					ports: [Object.spec.containers.ports{name: "http-envoy-prom", containerPort: 15090, protocol: "TCP"}]
-				}
+	log.Info("DEBUG: generateBaseCELExpression called - implementing full sidecar injection with JSONPatch")
+	// JSONPatch expects a CEL expression that returns an array of patch operations
+	// This approach avoids ApplyConfiguration atomic field limitations
+	return `[
+		{"op": "add", "path": "/metadata/labels/sidecar.istio.io~1inject", "value": "true"},
+		{"op": "add", "path": "/metadata/labels/istio.io~1rev", "value": "default"},
+		{"op": "add", "path": "/metadata/annotations/sidecar.istio.io~1interceptionMode", "value": "REDIRECT"},
+		{"op": "add", "path": "/metadata/annotations/traffic.sidecar.istio.io~1includeInboundPorts", "value": "*"},
+		{"op": "add", "path": "/metadata/annotations/traffic.sidecar.istio.io~1excludeInboundPorts", "value": "15090,15021,15020"},
+		{"op": "add", "path": "/spec/containers/-", "value": {
+			"name": "istio-proxy",
+			"image": "gcr.io/istio-testing/proxyv2:latest",
+			"args": [
+				"proxy", "sidecar", "--domain", "$(POD_NAMESPACE).svc.cluster.local",
+				"--proxyLogLevel=warning", "--proxyComponentLogLevel=misc:error", "--log_output_level=default:info"
 			],
-			initContainers: [
-				Object.spec.initContainers{
-					name: "istio-init",
-					image: "gcr.io/istio-testing/proxyv2:latest",
-					args: [
-						"istio-iptables", "-p", "15001", "-z", "15006", "-u", "1337", "-m", "REDIRECT",
-						"-i", "*", "-x", "", "-b", "*", "-d", "15090,15021,15020", "--log_output_level=default:info"
-					],
-					securityContext: Object.spec.initContainers.securityContext{runAsUser: 0}
-				}
-			]
-		}
-	}`
+			"env": [
+				{"name": "POD_NAME", "valueFrom": {"fieldRef": {"fieldPath": "metadata.name"}}},
+				{"name": "POD_NAMESPACE", "valueFrom": {"fieldRef": {"fieldPath": "metadata.namespace"}}},
+				{"name": "PILOT_CERT_PROVIDER", "value": "istiod"},
+				{"name": "CA_ADDR", "value": "istiod.istio-system.svc:15012"}
+			],
+			"ports": [{"name": "http-envoy-prom", "containerPort": 15090, "protocol": "TCP"}],
+			"securityContext": {
+				"runAsUser": 1337,
+				"runAsGroup": 1337,
+				"runAsNonRoot": true,
+				"readOnlyRootFilesystem": true,
+				"allowPrivilegeEscalation": false,
+				"capabilities": {"drop": ["ALL"]}
+			},
+			"resources": {
+				"requests": {"cpu": "100m", "memory": "128Mi"},
+				"limits": {"cpu": "2", "memory": "1Gi"}
+			}
+		}},
+		{"op": "add", "path": "/spec/initContainers", "value": [{
+			"name": "istio-init",
+			"image": "gcr.io/istio-testing/proxyv2:latest",
+			"args": [
+				"istio-iptables", "-p", "15001", "-z", "15006", "-u", "1337", "-m", "REDIRECT",
+				"-i", "*", "-x", "", "-b", "*", "-d", "15090,15021,15020", "--log_output_level=default:info"
+			],
+			"securityContext": {
+				"runAsUser": 0,
+				"runAsGroup": 0,
+				"runAsNonRoot": false,
+				"readOnlyRootFilesystem": false,
+				"allowPrivilegeEscalation": false,
+				"capabilities": {"add": ["NET_ADMIN", "NET_RAW"], "drop": ["ALL"]}
+			},
+			"resources": {
+				"requests": {"cpu": "100m", "memory": "128Mi"},
+				"limits": {"cpu": "2", "memory": "1Gi"}
+			}
+		}]}
+	]`
 }
 
 // generatePolicyBindings creates the MutatingAdmissionPolicyBinding resources (DEPRECATED - use generatePolicyBindingsUnstructured)
