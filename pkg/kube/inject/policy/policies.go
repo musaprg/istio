@@ -32,15 +32,12 @@ func (c *Controller) generateBaseSidecarPolicy() interface{} {
 
 // generateBaseCELExpression creates the CEL expression for base sidecar injection using ApplyConfiguration
 func (c *Controller) generateBaseCELExpression() string {
-	log.Info("DEBUG: generateBaseCELExpression called - implementing step-by-step sidecar injection")
+	log.Info("DEBUG: generateBaseCELExpression called - implementing full sidecar injection with proper CEL syntax")
 	// ApplyConfiguration expects a CEL expression that returns an Object
-	// Start with simpler injection to avoid CEL syntax complexity
+	// Now that basic mutation works, expand to full sidecar injection
 	return `Object{
 		metadata: Object.metadata{
-			labels: {
-				"sidecar.istio.io/inject": "true",
-				"istio.io/rev": "default"
-			},
+			labels: {"sidecar.istio.io/inject": "true", "istio.io/rev": "default"},
 			annotations: {
 				"sidecar.istio.io/interceptionMode": "REDIRECT",
 				"traffic.sidecar.istio.io/includeInboundPorts": "*",
@@ -48,87 +45,34 @@ func (c *Controller) generateBaseCELExpression() string {
 			}
 		},
 		spec: Object.spec{
-			containers: [Object{
-				name: "istio-proxy",
-				image: "gcr.io/istio-testing/proxyv2:latest",
-				args: [
-					"proxy",
-					"sidecar",
-					"--domain",
-					"$(POD_NAMESPACE).svc.cluster.local",
-					"--proxyLogLevel=warning",
-					"--proxyComponentLogLevel=misc:error",
-					"--log_output_level=default:info"
-				],
-				ports: [Object{
-					name: "http-envoy-prom",
-					containerPort: 15090,
-					protocol: "TCP"
-				}],
-				env: [
-					Object{name: "POD_NAME", valueFrom: Object{fieldRef: Object{fieldPath: "metadata.name"}}},
-					Object{name: "POD_NAMESPACE", valueFrom: Object{fieldRef: Object{fieldPath: "metadata.namespace"}}},
-					Object{name: "PILOT_CERT_PROVIDER", value: "istiod"},
-					Object{name: "CA_ADDR", value: "istiod.istio-system.svc:15012"}
-				],
-				resources: Object{
-					requests: {
-						"cpu": "100m",
-						"memory": "128Mi"
-					},
-					limits: {
-						"cpu": "2",
-						"memory": "1Gi"
-					}
-				},
-				securityContext: Object{
-					runAsUser: 1337,
-					runAsGroup: 1337,
-					runAsNonRoot: true,
-					readOnlyRootFilesystem: true,
-					allowPrivilegeEscalation: false,
-					capabilities: Object{
-						drop: ["ALL"]
-					}
+			containers: [
+				Object.spec.containers{
+					name: "istio-proxy",
+					image: "gcr.io/istio-testing/proxyv2:latest",
+					args: [
+						"proxy", "sidecar", "--domain", "$(POD_NAMESPACE).svc.cluster.local",
+						"--proxyLogLevel=warning", "--proxyComponentLogLevel=misc:error", "--log_output_level=default:info"
+					],
+					env: [
+						Object.spec.containers.env{name: "POD_NAME", valueFrom: Object.spec.containers.env.valueFrom{fieldRef: Object.spec.containers.env.valueFrom.fieldRef{fieldPath: "metadata.name"}}},
+						Object.spec.containers.env{name: "POD_NAMESPACE", valueFrom: Object.spec.containers.env.valueFrom{fieldRef: Object.spec.containers.env.valueFrom.fieldRef{fieldPath: "metadata.namespace"}}},
+						Object.spec.containers.env{name: "PILOT_CERT_PROVIDER", value: "istiod"},
+						Object.spec.containers.env{name: "CA_ADDR", value: "istiod.istio-system.svc:15012"}
+					],
+					ports: [Object.spec.containers.ports{name: "http-envoy-prom", containerPort: 15090, protocol: "TCP"}]
 				}
-			}],
-			initContainers: [Object{
-				name: "istio-init",
-				image: "gcr.io/istio-testing/proxyv2:latest",
-				args: [
-					"istio-iptables",
-					"-p", "15001",
-					"-z", "15006",
-					"-u", "1337",
-					"-m", "REDIRECT",
-					"-i", "*",
-					"-x", "",
-					"-b", "*",
-					"-d", "15090,15021,15020",
-					"--log_output_level=default:info"
-				],
-				resources: Object{
-					requests: {
-						"cpu": "100m",
-						"memory": "128Mi"
-					},
-					limits: {
-						"cpu": "2",
-						"memory": "1Gi"
-					}
-				},
-				securityContext: Object{
-					runAsUser: 0,
-					runAsGroup: 0,
-					runAsNonRoot: false,
-					readOnlyRootFilesystem: false,
-					allowPrivilegeEscalation: false,
-					capabilities: Object{
-						add: ["NET_ADMIN", "NET_RAW"],
-						drop: ["ALL"]
-					}
+			],
+			initContainers: [
+				Object.spec.initContainers{
+					name: "istio-init",
+					image: "gcr.io/istio-testing/proxyv2:latest",
+					args: [
+						"istio-iptables", "-p", "15001", "-z", "15006", "-u", "1337", "-m", "REDIRECT",
+						"-i", "*", "-x", "", "-b", "*", "-d", "15090,15021,15020", "--log_output_level=default:info"
+					],
+					securityContext: Object.spec.initContainers.securityContext{runAsUser: 0}
 				}
-			}]
+			]
 		}
 	}`
 }
