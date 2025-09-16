@@ -78,6 +78,7 @@ func (c *Controller) generateBaseSidecarPolicyUnstructured() *unstructured.Unstr
 					"namespaceSelector": map[string]interface{}{
 						"matchLabels": map[string]interface{}{
 							"injection-method": "policy",
+							"istio-injection":  "enabled",
 						},
 					},
 				},
