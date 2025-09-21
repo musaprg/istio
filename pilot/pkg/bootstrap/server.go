@@ -37,6 +37,7 @@ import (
 	"google.golang.org/grpc/reflection"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/rest"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 
 	meshconfig "istio.io/api/mesh/v1alpha1"
 	"istio.io/api/security/v1beta1"
@@ -70,6 +71,7 @@ import (
 	istiokeepalive "istio.io/istio/pkg/keepalive"
 	kubelib "istio.io/istio/pkg/kube"
 	"istio.io/istio/pkg/kube/inject"
+	"istio.io/istio/pkg/kube/inject/policy"
 	"istio.io/istio/pkg/kube/kclient"
 	"istio.io/istio/pkg/kube/krt"
 	"istio.io/istio/pkg/kube/multicluster"
@@ -179,6 +181,11 @@ type Server struct {
 	internalStop chan struct{}
 
 	webhookInfo *webhookInfo
+
+	// policyManager is the MutatingAdmissionPolicy-based injection manager
+	policyManager *policy.PolicyManager
+	// controllerManager is the controller-runtime manager for policy controller
+	controllerManager manager.Manager
 
 	statusManager *status.Manager
 	// RWConfigStore is the configstore which allows updates, particularly for status.
@@ -362,6 +369,14 @@ func NewServer(args *PilotArgs, initFuncs ...func(*Server)) (*Server, error) {
 		s.webhookInfo.mu.Lock()
 		s.webhookInfo.wh = wh
 		s.webhookInfo.mu.Unlock()
+		
+		// Initialize MutatingAdmissionPolicy-based injection if enabled
+		pm, err := s.initPolicyInjector(args)
+		if err != nil {
+			return nil, fmt.Errorf("error initializing policy injector: %v", err)
+		}
+		s.policyManager = pm
+		
 		if err := s.initConfigValidation(args); err != nil {
 			return nil, fmt.Errorf("error initializing config validator: %v", err)
 		}

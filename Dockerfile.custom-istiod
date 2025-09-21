@@ -1,0 +1,4 @@
+FROM docker.io/istio/pilot:1.26.3
+USER 0
+COPY out/linux_amd64/pilot-discovery /usr/local/bin/pilot-discovery
+USER 1337
